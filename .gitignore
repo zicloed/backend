@@ -1,0 +1,57 @@
+# Environment files
+.env
+.env.*
+!.env.example
+*.env
+
+# Secrets and credentials
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+*.jks
+*.pub
+*.priv
+*.token
+*.secrets
+
+# Local database and Docker data
+/data/
+*.sqlite
+*.sqlite3
+*.db
+pgdata/
+dbdata/
+postgres-data/
+
+# Go build and test artifacts
+/bin/
+/dist/
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+coverage.out
+
+# Dependency and cache folders
+vendor/
+node_modules/
+__pycache__/
+.go-version
+
+# Logs and temporary files
+*.log
+/tmp/
+*.tmp
+*.bak
+*.swp
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
