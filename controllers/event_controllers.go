@@ -18,8 +18,20 @@ func CreateEvents(context *gin.Context) {
 		return
 	}
 
-	event.UserId = 1
-	config.DB.Create(&event)
+	var user models.User
+	if err := config.DB.First(&user, event.UserID).Error; err != nil {
+		context.JSON(http.StatusBadRequest, gin.H{
+			"error": "User not found",
+		})
+		return
+	}
+
+	if err := config.DB.Create(&event).Error; err != nil {
+		context.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to create event",
+		})
+		return
+	}
 	context.JSON(http.StatusCreated, gin.H{
 		"message": "Data Created",
 		"event":   event,
