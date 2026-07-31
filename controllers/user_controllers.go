@@ -25,7 +25,7 @@ func RegisterUser(context *gin.Context) {
 	// Validation
 	err := context.ShouldBindJSON(&input)
 	if err != nil {
-		context.JSON(http.StatusBadGateway, gin.H{
+		context.JSON(http.StatusBadRequest, gin.H{
 			"error": err.Error(),
 		})
 		return
@@ -34,7 +34,7 @@ func RegisterUser(context *gin.Context) {
 	// Hash Password
 	hashedPassword, errHash := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 	if errHash != nil {
-		context.JSON(http.StatusBadGateway, gin.H{
+		context.JSON(http.StatusBadRequest, gin.H{
 			"error": "Failed Encrypt Password",
 		})
 		return
@@ -49,18 +49,18 @@ func RegisterUser(context *gin.Context) {
 
 	userCreated := config.DB.Create(&user).Error
 	if userCreated != nil {
-		context.JSON(http.StatusBadGateway, gin.H{
+		context.JSON(http.StatusBadRequest, gin.H{
 			"error": "Email maybe used",
 		})
 		return
 	}
 	context.JSON(http.StatusCreated, gin.H{
-		"message": "Success Register",
+		"message": "Register Success",
 		"user": gin.H{
-			"id"	: user.ID,
-			"name"	: user.Name,
-			"email"	: user.Email,
-			"event"	: user.Event,
+			"id":    user.ID,
+			"name":  user.Name,
+			"email": user.Email,
+			"event": user.Event,
 		},
 	})
 
