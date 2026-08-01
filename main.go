@@ -3,6 +3,7 @@ package main
 import (
 	"example/event-app/config"
 	"example/event-app/controllers"
+	"example/event-app/middlewares"
 	"log"
 
 	"github.com/gin-gonic/gin"
@@ -28,6 +29,13 @@ func main() {
 		api.DELETE("/events/:id", controllers.DeleteEvent)
 
 		api.POST("/auth/register", controllers.RegisterUser)
+		api.POST("/auth/login", controllers.LoginUser)
+		
+		protected := api.Group("/")
+		protected.Use(middlewares.RequiredAuth())
+		{
+			protected.GET("/auth/me", controllers.GetCurrentUser)
+		}
 	}
 
 	// server port
