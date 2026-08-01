@@ -9,6 +9,8 @@ import (
 )
 
 func CreateEvents(context *gin.Context) {
+	userID, _ := context.Get("userID")
+
 	var event models.Event
 	err := context.ShouldBindJSON(&event)
 	if err != nil {
@@ -17,6 +19,8 @@ func CreateEvents(context *gin.Context) {
 		})
 		return
 	}
+
+	event.UserID = uint(userID.(int)) // Set the UserID of the event to the authenticated user's ID
 
 	var user models.User
 	if err := config.DB.First(&user, event.UserID).Error; err != nil {
@@ -67,6 +71,7 @@ func GetEventsbyId(context *gin.Context) {
 }
 
 func UpdateEvent(context *gin.Context) {
+	userID, _ := context.Get("userID")
 	var event models.Event
 	paramsId := context.Param("id")
 
@@ -74,6 +79,12 @@ func UpdateEvent(context *gin.Context) {
 	if eventData != nil {
 		context.JSON(http.StatusNotFound, gin.H{
 			"error": "Event not found",
+		})
+	}
+
+	if event.UserID != uint(userID.(int)) {
+		context.JSON(http.StatusForbidden, gin.H{
+			"error": "You are not authorized to update this event",
 		})
 		return
 	}
@@ -95,6 +106,7 @@ func UpdateEvent(context *gin.Context) {
 }
 
 func DeleteEvent(context *gin.Context) {
+	userID, _ := context.Get("userID")
 	var event models.Event
 	paramId := context.Param("id")
 
@@ -102,6 +114,13 @@ func DeleteEvent(context *gin.Context) {
 	if eventData != nil {
 		context.JSON(http.StatusNotFound, gin.H{
 			"error": "Event not found",
+		})
+		return
+	}
+
+	if event.UserID != uint(userID.(int)) {
+		context.JSON(http.StatusForbidden, gin.H{
+			"error": "you are not authorized to delete this event",
 		})
 		return
 	}
