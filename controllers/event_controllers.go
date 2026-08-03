@@ -1,42 +1,82 @@
 package controllers
 
 import (
+	"context"
 	"example/event-app/config"
 	"example/event-app/models"
 	"net/http"
+	"os"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/imagekit-developer/imagekit-go/v2"
+	"github.com/imagekit-developer/imagekit-go/v2/option"
 )
 
-func CreateEvents(context *gin.Context) {
-	userID, _ := context.Get("userID")
+func initImageKit() *imagekit.Client {
+	client := imagekit.NewClient(
+		option.WithPrivateKey(os.Getenv("IMAGEKIT_PRIVATE_KEY")),
+	)
+	return &client
+}
 
-	var event models.Event
-	err := context.ShouldBindJSON(&event)
+func CreateEvents(c *gin.Context) {
+	userID, _ := c.Get("userID")
+
+	// recieve from form-data
+	file, header, err := c.Request.FormFile("image")
 	if err != nil {
-		context.JSON(http.StatusBadRequest, gin.H{
-			"error": err.Error(),
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Picture is required",
 		})
 		return
 	}
 
-	event.UserID = uint(userID.(int)) // Set the UserID of the event to the authenticated user's ID
+	defer file.Close()
+
+	// upload image to imagekit
+	fileName := header.Filename
+	ik := initImageKit()
+	uploadRes, errUpload := ik.Files.Upload(context.Background(), imagekit.FileUploadParams{
+		File:     file,
+		FileName: fileName,
+	})
+
+	if errUpload != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to upload image",
+		})
+		return
+	}
+
+	parsedTime, _ := time.Parse(time.RFC3339, c.PostForm("datetime"))
+
+	// save to database
+	event := models.Event{
+		Name:        c.PostForm("name"),
+		Description: c.PostForm("description"),
+		Location:    c.PostForm("location"),
+		Datetime:    parsedTime,
+		Image:       uploadRes.URL,
+		ImageID:     uploadRes.FileID,
+		UserID: uint(userID.(int)), // Set the UserID of the event to the authenticated user's ID
+	}
 
 	var user models.User
 	if err := config.DB.First(&user, event.UserID).Error; err != nil {
-		context.JSON(http.StatusBadRequest, gin.H{
+		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "User not found",
 		})
 		return
 	}
 
 	if err := config.DB.Create(&event).Error; err != nil {
-		context.JSON(http.StatusInternalServerError, gin.H{
+		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Failed to create event",
 		})
 		return
 	}
-	context.JSON(http.StatusCreated, gin.H{
+	c.JSON(http.StatusCreated, gin.H{
 		"message": "Data Created",
 		"event":   event,
 	})
@@ -58,7 +98,7 @@ func GetEventsbyId(context *gin.Context) {
 
 	var eventData = config.DB.First(&event, paramsId).Error
 	if eventData != nil {
-		context.JSON(http.StatusBadRequest, gin.H{
+		context.JSON(http.StatusNotFound, gin.H{
 			"error": "Event not found",
 		})
 		return
@@ -70,36 +110,69 @@ func GetEventsbyId(context *gin.Context) {
 	})
 }
 
-func UpdateEvent(context *gin.Context) {
-	userID, _ := context.Get("userID")
+func UpdateEvent(c *gin.Context) {
+	userID, _ := c.Get("userID")
 	var event models.Event
-	paramsId := context.Param("id")
+	paramsId := c.Param("id")
 
 	var eventData = config.DB.First(&event, paramsId).Error
 	if eventData != nil {
-		context.JSON(http.StatusNotFound, gin.H{
+		c.JSON(http.StatusNotFound, gin.H{
 			"error": "Event not found",
 		})
+		return
 	}
 
 	if event.UserID != uint(userID.(int)) {
-		context.JSON(http.StatusForbidden, gin.H{
+		c.JSON(http.StatusForbidden, gin.H{
 			"error": "You are not authorized to update this event",
 		})
 		return
 	}
 
-	var input models.Event
-	err := context.ShouldBindJSON(&input)
-	if err != nil {
-		context.JSON(http.StatusBadRequest, gin.H{
-			"error": err.Error(),
+	file, header, err := c.Request.FormFile("image")
+	if err == nil {
+		defer file.Close()
+
+		ik := initImageKit()
+
+		// upload image to imagekit
+		fileName := header.Filename
+		uploadRes, errUpload := ik.Files.Upload(context.Background(), imagekit.FileUploadParams{
+		File:     file,
+		FileName: fileName,
 		})
-		return
+
+		if errUpload == nil {
+			// deleted old image from imagekit
+			if event.ImageID != "" {
+			ik.Files.Delete(context.Background(), event.ImageID)
+			}
+
+			// update event with new image
+			event.Image = uploadRes.URL
+			event.ImageID = uploadRes.FileID
+		}
 	}
 
-	config.DB.Model(&event).Updates(input)
-	context.JSON(http.StatusOK, gin.H{
+	if name := c.PostForm("name"); name != "" {
+		event.Name = name
+	}
+	if description := c.PostForm("description"); description != "" {
+		event.Description = description
+	}
+	if location := c.PostForm("locaiton"); location != "" {
+		event.Location = location
+	}
+	if dateTimeStr := c.PostForm("datetime"); dateTimeStr != "" {
+		parseTime, errParse := time.Parse(time.RFC3339, dateTimeStr)
+		if errParse == nil {
+			event.Datetime = parseTime
+		}
+	}
+
+	config.DB.Save(&event)
+	c.JSON(http.StatusOK, gin.H{
 		"message": "Data get update",
 		"event":   event,
 	})
