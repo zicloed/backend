@@ -59,7 +59,7 @@ func CreateEvents(c *gin.Context) {
 		Datetime:    parsedTime,
 		Image:       uploadRes.URL,
 		ImageID:     uploadRes.FileID,
-		UserID: uint(userID.(int)), // Set the UserID of the event to the authenticated user's ID
+		UserID:      uint(userID.(int)), // Set the UserID of the event to the authenticated user's ID
 	}
 
 	var user models.User
@@ -139,16 +139,23 @@ func UpdateEvent(c *gin.Context) {
 		// upload image to imagekit
 		fileName := header.Filename
 		uploadRes, errUpload := ik.Files.Upload(context.Background(), imagekit.FileUploadParams{
-		File:     file,
-		FileName: fileName,
+			File:     file,
+			FileName: fileName,
 		})
 
 		if errUpload == nil {
-			// deleted old image from imagekit
+			// // deleted old image from imagekit
 			if event.ImageID != "" {
-			ik.Files.Delete(context.Background(), event.ImageID)
+				ik.Files.Delete(context.Background(), event.ImageID)
 			}
-
+			// if event.ImageID != "" {
+			// 	ik := initImageKit()
+			// 	if _, errDelete := ik.Files.Delete(context.Background(), event.ImageID); errDelete != nil {
+			// 		c.JSON(http.StatusInternalServerError, gin.H{
+			// 			"error": "Failed to delete old image",
+			// 		})
+			// 		return
+			// 	}
 			// update event with new image
 			event.Image = uploadRes.URL
 			event.ImageID = uploadRes.FileID
@@ -161,7 +168,7 @@ func UpdateEvent(c *gin.Context) {
 	if description := c.PostForm("description"); description != "" {
 		event.Description = description
 	}
-	if location := c.PostForm("locaiton"); location != "" {
+	if location := c.PostForm("location"); location != "" {
 		event.Location = location
 	}
 	if dateTimeStr := c.PostForm("datetime"); dateTimeStr != "" {
@@ -178,28 +185,33 @@ func UpdateEvent(c *gin.Context) {
 	})
 }
 
-func DeleteEvent(context *gin.Context) {
-	userID, _ := context.Get("userID")
+func DeleteEvent(c *gin.Context) {
+	userID, _ := c.Get("userID")
 	var event models.Event
-	paramId := context.Param("id")
+	paramId := c.Param("id")
 
 	var eventData = config.DB.First(&event, paramId).Error
 	if eventData != nil {
-		context.JSON(http.StatusNotFound, gin.H{
+		c.JSON(http.StatusNotFound, gin.H{
 			"error": "Event not found",
 		})
 		return
 	}
 
 	if event.UserID != uint(userID.(int)) {
-		context.JSON(http.StatusForbidden, gin.H{
+		c.JSON(http.StatusForbidden, gin.H{
 			"error": "you are not authorized to delete this event",
 		})
 		return
 	}
 
+	if event.ImageID != "" {
+		ik := initImageKit()
+		ik.Files.Delete(context.Background(), event.ImageID)
+	}
+
 	config.DB.Unscoped().Delete(&event)
-	context.JSON(http.StatusOK, gin.H{
+	c.JSON(http.StatusOK, gin.H{
 		"message": "Data success to Deleted",
 		"event":   event,
 	})
