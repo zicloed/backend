@@ -6,11 +6,14 @@ import (
 	"example/event-app/models"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
+	"math"
 
 	"github.com/gin-gonic/gin"
 	"github.com/imagekit-developer/imagekit-go/v2"
 	"github.com/imagekit-developer/imagekit-go/v2/option"
+	"gorm.io/gorm"
 )
 
 func initImageKit() *imagekit.Client {
@@ -82,13 +85,63 @@ func CreateEvents(c *gin.Context) {
 	})
 }
 
-func GetEvents(context *gin.Context) {
-	var event []models.Event
+func GetEvents(c *gin.Context) {
+	var events []models.Event
 
-	config.DB.Find(&event)
-	context.JSON(http.StatusOK, gin.H{
+	// inisiasi dasar query di gorm
+	query := config.DB.Model(&models.Event{})
+
+	// ambil fungsi filter dari query params
+	search := c.Query("search")
+
+	if search != "" {
+		query = query.Where("name ILIKE ? OR description ILIKE ?", "%"+search+"%", "%"+search+"%")
+	}
+
+	// hitung total data sebelum dilimit
+	var totalRows int64
+	query.Count(&totalRows)
+
+	// tangkap params query dan masukkan nilai default
+	pageStr := c.DefaultQuery("page", "1")
+	limitStr := c.DefaultQuery("limit", "6")
+
+	page, errPage := strconv.Atoi(pageStr)
+	if errPage != nil || page < 1 {
+		page = 1
+	}
+	limit, errLimit := strconv.Atoi(limitStr)
+	if errLimit != nil || limit < 1 {
+		limit = 6
+	}
+
+	// hitung offset
+	offset := (page - 1) * limit
+	// hitung data perhalaman
+	totalPage := 0
+	if limit > 0 {
+		totalPage = int(math.Ceil(float64(totalRows) / float64(limit)))
+	}
+
+	// eksekusi semua fitur yang sudah dibuat
+	if errEvents := query.Preload("User", func(db *gorm.DB) *gorm.DB {
+		return db.Select("id", "name", "email")
+	}).Limit(limit).Offset(offset).Find(&events).Error; errEvents != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to retrieve data events",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
 		"message": "Data Showing All",
-		"event":   event,
+		"events":  events,
+		"meta": gin.H{
+			"page":      page,
+			"limit":     limit,
+			"totalRows": totalRows,
+			"totalPage": totalPage,
+		},
 	})
 }
 
@@ -96,7 +149,9 @@ func GetEventsbyId(context *gin.Context) {
 	var event models.Event
 	paramsId := context.Param("id")
 
-	var eventData = config.DB.First(&event, paramsId).Error
+	var eventData = config.DB.Preload("User", func(db *gorm.DB) *gorm.DB{
+		return db.Select("id", "name", "email")
+	}).First(&event, paramsId).Error
 	if eventData != nil {
 		context.JSON(http.StatusNotFound, gin.H{
 			"error": "Event not found",

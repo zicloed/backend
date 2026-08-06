@@ -6,6 +6,6 @@ type User struct {
 	gorm.Model
 	Name     string `json:"name"`
 	Email    string `json:"email"`
-	Password string `json:"Password"`
+	Password string `json:"password"`
 	Event    []Event
 }
